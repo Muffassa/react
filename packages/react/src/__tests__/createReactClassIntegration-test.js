@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -17,6 +17,7 @@ let createReactClass;
 
 describe('create-react-class-integration', () => {
   beforeEach(() => {
+    jest.resetModules();
     PropTypes = require('prop-types');
     React = require('react');
     ReactDOM = require('react-dom');
@@ -65,6 +66,7 @@ describe('create-react-class-integration', () => {
     ).toWarnDev(
       'Warning: Component: prop type `prop` is invalid; ' +
         'it must be a function, usually from React.PropTypes.',
+      {withoutStack: true},
     );
   });
 
@@ -82,6 +84,7 @@ describe('create-react-class-integration', () => {
     ).toWarnDev(
       'Warning: Component: context type `prop` is invalid; ' +
         'it must be a function, usually from React.PropTypes.',
+      {withoutStack: true},
     );
   });
 
@@ -99,6 +102,7 @@ describe('create-react-class-integration', () => {
     ).toWarnDev(
       'Warning: Component: child context type `prop` is invalid; ' +
         'it must be a function, usually from React.PropTypes.',
+      {withoutStack: true},
     );
   });
 
@@ -116,6 +120,7 @@ describe('create-react-class-integration', () => {
       'Warning: A component has a method called componentShouldUpdate(). Did you ' +
         'mean shouldComponentUpdate()? The name is phrased as a question ' +
         'because the function is expected to return a value.',
+      {withoutStack: true},
     );
 
     expect(() =>
@@ -132,6 +137,7 @@ describe('create-react-class-integration', () => {
       'Warning: NamedComponent has a method called componentShouldUpdate(). Did you ' +
         'mean shouldComponentUpdate()? The name is phrased as a question ' +
         'because the function is expected to return a value.',
+      {withoutStack: true},
     );
   });
 
@@ -148,6 +154,24 @@ describe('create-react-class-integration', () => {
     ).toWarnDev(
       'Warning: A component has a method called componentWillRecieveProps(). Did you ' +
         'mean componentWillReceiveProps()?',
+      {withoutStack: true},
+    );
+  });
+
+  it('should warn when misspelling UNSAFE_componentWillReceiveProps', () => {
+    expect(() =>
+      createReactClass({
+        UNSAFE_componentWillRecieveProps: function() {
+          return false;
+        },
+        render: function() {
+          return <div />;
+        },
+      }),
+    ).toWarnDev(
+      'Warning: A component has a method called UNSAFE_componentWillRecieveProps(). ' +
+        'Did you mean UNSAFE_componentWillReceiveProps()?',
+      {withoutStack: true},
     );
   });
 
@@ -175,7 +199,6 @@ describe('create-react-class-integration', () => {
   });
 
   // TODO: Consider actually moving these to statics or drop this unit test.
-
   xit('should warn when using deprecated non-static spec keys', () => {
     expect(() =>
       createReactClass({
@@ -246,6 +269,23 @@ describe('create-react-class-integration', () => {
         return <span />;
       },
     });
+    let instance = <Component />;
+    instance = ReactTestUtils.renderIntoDocument(instance);
+    expect(instance.state.occupation).toEqual('clown');
+  });
+
+  it('should work with getDerivedStateFromProps() return values', () => {
+    const Component = createReactClass({
+      getInitialState() {
+        return {};
+      },
+      render: function() {
+        return <span />;
+      },
+    });
+    Component.getDerivedStateFromProps = () => {
+      return {occupation: 'clown'};
+    };
     let instance = <Component />;
     instance = ReactTestUtils.renderIntoDocument(instance);
     expect(instance.state.occupation).toEqual('clown');
@@ -324,6 +364,7 @@ describe('create-react-class-integration', () => {
     expect(() => expect(() => Component()).toThrow()).toWarnDev(
       'Warning: Something is calling a React component directly. Use a ' +
         'factory or JSX instead. See: https://fb.me/react-legacyfactory',
+      {withoutStack: true},
     );
   });
 
@@ -346,6 +387,291 @@ describe('create-react-class-integration', () => {
     expect(ops).toEqual(['Render: 0', 'Render: 1', 'Callback: 1']);
   });
 
+  it('getDerivedStateFromProps updates state when props change', () => {
+    const Component = createReactClass({
+      getInitialState() {
+        return {
+          count: 1,
+        };
+      },
+      render() {
+        return <div>count:{this.state.count}</div>;
+      },
+    });
+    Component.getDerivedStateFromProps = (nextProps, prevState) => ({
+      count: prevState.count + nextProps.incrementBy,
+    });
+
+    const container = document.createElement('div');
+    const instance = ReactDOM.render(
+      <div>
+        <Component incrementBy={0} />
+      </div>,
+      container,
+    );
+    expect(instance.textContent).toEqual('count:1');
+    ReactDOM.render(
+      <div>
+        <Component incrementBy={2} />
+      </div>,
+      container,
+    );
+    expect(instance.textContent).toEqual('count:3');
+  });
+
+  it('should support the new static getDerivedStateFromProps method', () => {
+    let instance;
+    const Component = createReactClass({
+      statics: {
+        getDerivedStateFromProps: function() {
+          return {foo: 'bar'};
+        },
+      },
+
+      getInitialState() {
+        return {};
+      },
+
+      render: function() {
+        instance = this;
+        return null;
+      },
+    });
+    ReactDOM.render(<Component />, document.createElement('div'));
+    expect(instance.state.foo).toBe('bar');
+  });
+
+  it('warns if getDerivedStateFromProps is not static', () => {
+    const Foo = createReactClass({
+      displayName: 'Foo',
+      getDerivedStateFromProps() {
+        return {};
+      },
+      render() {
+        return <div />;
+      },
+    });
+    expect(() =>
+      ReactDOM.render(<Foo foo="foo" />, document.createElement('div')),
+    ).toWarnDev(
+      'Foo: getDerivedStateFromProps() is defined as an instance method ' +
+        'and will be ignored. Instead, declare it as a static method.',
+      {withoutStack: true},
+    );
+  });
+
+  it('warns if getDerivedStateFromError is not static', () => {
+    const Foo = createReactClass({
+      displayName: 'Foo',
+      getDerivedStateFromError() {
+        return {};
+      },
+      render() {
+        return <div />;
+      },
+    });
+    expect(() =>
+      ReactDOM.render(<Foo foo="foo" />, document.createElement('div')),
+    ).toWarnDev(
+      'Foo: getDerivedStateFromError() is defined as an instance method ' +
+        'and will be ignored. Instead, declare it as a static method.',
+      {withoutStack: true},
+    );
+  });
+
+  it('warns if getSnapshotBeforeUpdate is static', () => {
+    const Foo = createReactClass({
+      displayName: 'Foo',
+      statics: {
+        getSnapshotBeforeUpdate: function() {
+          return null;
+        },
+      },
+      render() {
+        return <div />;
+      },
+    });
+    expect(() =>
+      ReactDOM.render(<Foo foo="foo" />, document.createElement('div')),
+    ).toWarnDev(
+      'Foo: getSnapshotBeforeUpdate() is defined as a static method ' +
+        'and will be ignored. Instead, declare it as an instance method.',
+      {withoutStack: true},
+    );
+  });
+
+  it('should warn if state is not properly initialized before getDerivedStateFromProps', () => {
+    const Component = createReactClass({
+      displayName: 'Component',
+      statics: {
+        getDerivedStateFromProps: function() {
+          return null;
+        },
+      },
+      render: function() {
+        return null;
+      },
+    });
+    expect(() =>
+      ReactDOM.render(<Component />, document.createElement('div')),
+    ).toWarnDev(
+      '`Component` uses `getDerivedStateFromProps` but its initial state is ' +
+        'null. This is not recommended. Instead, define the initial state by ' +
+        'assigning an object to `this.state` in the constructor of `Component`. ' +
+        'This ensures that `getDerivedStateFromProps` arguments have a consistent shape.',
+      {
+        withoutStack: true,
+      },
+    );
+  });
+
+  it('should not invoke deprecated lifecycles (cWM/cWRP/cWU) if new static gDSFP is present', () => {
+    const Component = createReactClass({
+      statics: {
+        getDerivedStateFromProps: function() {
+          return null;
+        },
+      },
+      componentWillMount: function() {
+        throw Error('unexpected');
+      },
+      componentWillReceiveProps: function() {
+        throw Error('unexpected');
+      },
+      componentWillUpdate: function() {
+        throw Error('unexpected');
+      },
+      getInitialState: function() {
+        return {};
+      },
+      render: function() {
+        return null;
+      },
+    });
+
+    expect(() => {
+      expect(() => {
+        ReactDOM.render(<Component />, document.createElement('div'));
+      }).toWarnDev(
+        'Unsafe legacy lifecycles will not be called for components using new component APIs.\n\n' +
+          'Component uses getDerivedStateFromProps() but also contains the following legacy lifecycles:\n' +
+          '  componentWillMount\n' +
+          '  componentWillReceiveProps\n' +
+          '  componentWillUpdate\n\n' +
+          'The above lifecycles should be removed. Learn more about this warning here:\n' +
+          'https://fb.me/react-unsafe-component-lifecycles',
+        {withoutStack: true},
+      );
+    }).toLowPriorityWarnDev(
+      [
+        'componentWillMount has been renamed',
+        'componentWillReceiveProps has been renamed',
+        'componentWillUpdate has been renamed',
+      ],
+      {withoutStack: true},
+    );
+    ReactDOM.render(<Component foo={1} />, document.createElement('div'));
+  });
+
+  it('should not invoke deprecated lifecycles (cWM/cWRP/cWU) if new getSnapshotBeforeUpdate is present', () => {
+    const Component = createReactClass({
+      getSnapshotBeforeUpdate: function() {
+        return null;
+      },
+      componentWillMount: function() {
+        throw Error('unexpected');
+      },
+      componentWillReceiveProps: function() {
+        throw Error('unexpected');
+      },
+      componentWillUpdate: function() {
+        throw Error('unexpected');
+      },
+      componentDidUpdate: function() {},
+      render: function() {
+        return null;
+      },
+    });
+
+    expect(() => {
+      expect(() => {
+        ReactDOM.render(<Component />, document.createElement('div'));
+      }).toWarnDev(
+        'Unsafe legacy lifecycles will not be called for components using new component APIs.\n\n' +
+          'Component uses getSnapshotBeforeUpdate() but also contains the following legacy lifecycles:\n' +
+          '  componentWillMount\n' +
+          '  componentWillReceiveProps\n' +
+          '  componentWillUpdate\n\n' +
+          'The above lifecycles should be removed. Learn more about this warning here:\n' +
+          'https://fb.me/react-unsafe-component-lifecycles',
+        {withoutStack: true},
+      );
+    }).toLowPriorityWarnDev(
+      [
+        'componentWillMount has been renamed',
+        'componentWillReceiveProps has been renamed',
+        'componentWillUpdate has been renamed',
+      ],
+      {withoutStack: true},
+    );
+    ReactDOM.render(<Component foo={1} />, document.createElement('div'));
+  });
+
+  it('should invoke both deprecated and new lifecycles if both are present', () => {
+    const log = [];
+
+    const Component = createReactClass({
+      mixins: [
+        {
+          componentWillMount: function() {
+            log.push('componentWillMount');
+          },
+          componentWillReceiveProps: function() {
+            log.push('componentWillReceiveProps');
+          },
+          componentWillUpdate: function() {
+            log.push('componentWillUpdate');
+          },
+        },
+      ],
+      UNSAFE_componentWillMount: function() {
+        log.push('UNSAFE_componentWillMount');
+      },
+      UNSAFE_componentWillReceiveProps: function() {
+        log.push('UNSAFE_componentWillReceiveProps');
+      },
+      UNSAFE_componentWillUpdate: function() {
+        log.push('UNSAFE_componentWillUpdate');
+      },
+      render: function() {
+        return null;
+      },
+    });
+
+    const div = document.createElement('div');
+    expect(() =>
+      ReactDOM.render(<Component foo="bar" />, div),
+    ).toLowPriorityWarnDev(
+      [
+        'componentWillMount has been renamed',
+        'componentWillReceiveProps has been renamed',
+        'componentWillUpdate has been renamed',
+      ],
+      {withoutStack: true},
+    );
+    expect(log).toEqual(['componentWillMount', 'UNSAFE_componentWillMount']);
+
+    log.length = 0;
+
+    ReactDOM.render(<Component foo="baz" />, div);
+    expect(log).toEqual([
+      'componentWillReceiveProps',
+      'UNSAFE_componentWillReceiveProps',
+      'componentWillUpdate',
+      'UNSAFE_componentWillUpdate',
+    ]);
+  });
+
   it('isMounted works', () => {
     const ops = [];
     let instance;
@@ -353,13 +679,13 @@ describe('create-react-class-integration', () => {
       displayName: 'MyComponent',
       mixins: [
         {
-          componentWillMount() {
+          UNSAFE_componentWillMount() {
             this.log('mixin.componentWillMount');
           },
           componentDidMount() {
             this.log('mixin.componentDidMount');
           },
-          componentWillUpdate() {
+          UNSAFE_componentWillUpdate() {
             this.log('mixin.componentWillUpdate');
           },
           componentDidUpdate() {
@@ -377,13 +703,13 @@ describe('create-react-class-integration', () => {
         this.log('getInitialState');
         return {};
       },
-      componentWillMount() {
+      UNSAFE_componentWillMount() {
         this.log('componentWillMount');
       },
       componentDidMount() {
         this.log('componentDidMount');
       },
-      componentWillUpdate() {
+      UNSAFE_componentWillUpdate() {
         this.log('componentWillUpdate');
       },
       componentDidUpdate() {
@@ -405,9 +731,12 @@ describe('create-react-class-integration', () => {
       'Warning: MyComponent: isMounted is deprecated. Instead, make sure to ' +
         'clean up subscriptions and pending requests in componentWillUnmount ' +
         'to prevent memory leaks.',
+      {withoutStack: true},
     );
 
+    // Dedupe
     ReactDOM.render(<Component />, container);
+
     ReactDOM.unmountComponentAtNode(container);
     instance.log('after unmount');
     expect(ops).toEqual([

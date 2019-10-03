@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -7,7 +7,7 @@
  * @flow
  */
 
-import warning from 'fbjs/lib/warning';
+import warning from 'shared/warning';
 
 type PropertyType = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -51,6 +51,7 @@ export type PropertyInfo = {|
   +mustUseProperty: boolean,
   +propertyName: string,
   +type: PropertyType,
+  +sanitizeURL: boolean,
 |};
 
 /* eslint-disable max-len */
@@ -66,14 +67,15 @@ export const VALID_ATTRIBUTE_NAME_REGEX = new RegExp(
   '^[' + ATTRIBUTE_NAME_START_CHAR + '][' + ATTRIBUTE_NAME_CHAR + ']*$',
 );
 
+const hasOwnProperty = Object.prototype.hasOwnProperty;
 const illegalAttributeNameCache = {};
 const validatedAttributeNameCache = {};
 
 export function isAttributeNameSafe(attributeName: string): boolean {
-  if (validatedAttributeNameCache.hasOwnProperty(attributeName)) {
+  if (hasOwnProperty.call(validatedAttributeNameCache, attributeName)) {
     return true;
   }
-  if (illegalAttributeNameCache.hasOwnProperty(attributeName)) {
+  if (hasOwnProperty.call(illegalAttributeNameCache, attributeName)) {
     return false;
   }
   if (VALID_ATTRIBUTE_NAME_REGEX.test(attributeName)) {
@@ -157,6 +159,9 @@ export function shouldRemoveAttribute(
   ) {
     return true;
   }
+  if (isCustomComponentTag) {
+    return false;
+  }
   if (propertyInfo !== null) {
     switch (propertyInfo.type) {
       case BOOLEAN:
@@ -182,6 +187,7 @@ function PropertyInfoRecord(
   mustUseProperty: boolean,
   attributeName: string,
   attributeNamespace: string | null,
+  sanitizeURL: boolean,
 ) {
   this.acceptsBooleans =
     type === BOOLEANISH_STRING ||
@@ -192,6 +198,7 @@ function PropertyInfoRecord(
   this.mustUseProperty = mustUseProperty;
   this.propertyName = name;
   this.type = type;
+  this.sanitizeURL = sanitizeURL;
 }
 
 // When adding attributes to this list, be sure to also add them to
@@ -219,23 +226,25 @@ const properties = {};
     false, // mustUseProperty
     name, // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
 // A few React string attributes have a different name.
 // This is a mapping from React prop names to the attribute names.
-new Map([
+[
   ['acceptCharset', 'accept-charset'],
   ['className', 'class'],
   ['htmlFor', 'for'],
   ['httpEquiv', 'http-equiv'],
-]).forEach((attributeName, name) => {
+].forEach(([name, attributeName]) => {
   properties[name] = new PropertyInfoRecord(
     name,
     STRING,
     false, // mustUseProperty
     attributeName, // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -249,6 +258,7 @@ new Map([
     false, // mustUseProperty
     name.toLowerCase(), // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -256,13 +266,19 @@ new Map([
 // In React, we let users pass `true` and `false` even though technically
 // these aren't boolean attributes (they are coerced to strings).
 // Since these are SVG attributes, their attribute names are case-sensitive.
-['autoReverse', 'externalResourcesRequired', 'preserveAlpha'].forEach(name => {
+[
+  'autoReverse',
+  'externalResourcesRequired',
+  'focusable',
+  'preserveAlpha',
+].forEach(name => {
   properties[name] = new PropertyInfoRecord(
     name,
     BOOLEANISH_STRING,
     false, // mustUseProperty
     name, // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -278,6 +294,7 @@ new Map([
   'default',
   'defer',
   'disabled',
+  'disablePictureInPicture',
   'formNoValidate',
   'hidden',
   'loop',
@@ -299,6 +316,7 @@ new Map([
     false, // mustUseProperty
     name.toLowerCase(), // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -311,36 +329,59 @@ new Map([
   'multiple',
   'muted',
   'selected',
+
+  // NOTE: if you add a camelCased prop to this list,
+  // you'll need to set attributeName to name.toLowerCase()
+  // instead in the assignment below.
 ].forEach(name => {
   properties[name] = new PropertyInfoRecord(
     name,
     BOOLEAN,
     true, // mustUseProperty
-    name.toLowerCase(), // attributeName
+    name, // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
 // These are HTML attributes that are "overloaded booleans": they behave like
 // booleans, but can also accept a string value.
-['capture', 'download'].forEach(name => {
+[
+  'capture',
+  'download',
+
+  // NOTE: if you add a camelCased prop to this list,
+  // you'll need to set attributeName to name.toLowerCase()
+  // instead in the assignment below.
+].forEach(name => {
   properties[name] = new PropertyInfoRecord(
     name,
     OVERLOADED_BOOLEAN,
     false, // mustUseProperty
-    name.toLowerCase(), // attributeName
+    name, // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
 // These are HTML attributes that must be positive numbers.
-['cols', 'rows', 'size', 'span'].forEach(name => {
+[
+  'cols',
+  'rows',
+  'size',
+  'span',
+
+  // NOTE: if you add a camelCased prop to this list,
+  // you'll need to set attributeName to name.toLowerCase()
+  // instead in the assignment below.
+].forEach(name => {
   properties[name] = new PropertyInfoRecord(
     name,
     POSITIVE_NUMERIC,
     false, // mustUseProperty
-    name.toLowerCase(), // attributeName
+    name, // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -352,6 +393,7 @@ new Map([
     false, // mustUseProperty
     name.toLowerCase(), // attributeName
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -437,6 +479,10 @@ const capitalize = token => token[1].toUpperCase();
   'writing-mode',
   'xmlns:xlink',
   'x-height',
+
+  // NOTE: if you add a camelCased prop to this list,
+  // you'll need to set attributeName to name.toLowerCase()
+  // instead in the assignment below.
 ].forEach(attributeName => {
   const name = attributeName.replace(CAMELIZE, capitalize);
   properties[name] = new PropertyInfoRecord(
@@ -445,6 +491,7 @@ const capitalize = token => token[1].toUpperCase();
     false, // mustUseProperty
     attributeName,
     null, // attributeNamespace
+    false, // sanitizeURL
   );
 });
 
@@ -452,11 +499,14 @@ const capitalize = token => token[1].toUpperCase();
 [
   'xlink:actuate',
   'xlink:arcrole',
-  'xlink:href',
   'xlink:role',
   'xlink:show',
   'xlink:title',
   'xlink:type',
+
+  // NOTE: if you add a camelCased prop to this list,
+  // you'll need to set attributeName to name.toLowerCase()
+  // instead in the assignment below.
 ].forEach(attributeName => {
   const name = attributeName.replace(CAMELIZE, capitalize);
   properties[name] = new PropertyInfoRecord(
@@ -465,11 +515,20 @@ const capitalize = token => token[1].toUpperCase();
     false, // mustUseProperty
     attributeName,
     'http://www.w3.org/1999/xlink',
+    false, // sanitizeURL
   );
 });
 
 // String SVG attributes with the xml namespace.
-['xml:base', 'xml:lang', 'xml:space'].forEach(attributeName => {
+[
+  'xml:base',
+  'xml:lang',
+  'xml:space',
+
+  // NOTE: if you add a camelCased prop to this list,
+  // you'll need to set attributeName to name.toLowerCase()
+  // instead in the assignment below.
+].forEach(attributeName => {
   const name = attributeName.replace(CAMELIZE, capitalize);
   properties[name] = new PropertyInfoRecord(
     name,
@@ -477,16 +536,43 @@ const capitalize = token => token[1].toUpperCase();
     false, // mustUseProperty
     attributeName,
     'http://www.w3.org/XML/1998/namespace',
+    false, // sanitizeURL
   );
 });
 
-// Special case: this attribute exists both in HTML and SVG.
-// Its "tabindex" attribute name is case-sensitive in SVG so we can't just use
-// its React `tabIndex` name, like we do for attributes that exist only in HTML.
-properties.tabIndex = new PropertyInfoRecord(
-  'tabIndex',
+// These attribute exists both in HTML and SVG.
+// The attribute name is case-sensitive in SVG so we can't just use
+// the React name like we do for attributes that exist only in HTML.
+['tabIndex', 'crossOrigin'].forEach(attributeName => {
+  properties[attributeName] = new PropertyInfoRecord(
+    attributeName,
+    STRING,
+    false, // mustUseProperty
+    attributeName.toLowerCase(), // attributeName
+    null, // attributeNamespace
+    false, // sanitizeURL
+  );
+});
+
+// These attributes accept URLs. These must not allow javascript: URLS.
+// These will also need to accept Trusted Types object in the future.
+const xlinkHref = 'xlinkHref';
+properties[xlinkHref] = new PropertyInfoRecord(
+  'xlinkHref',
   STRING,
   false, // mustUseProperty
-  'tabindex', // attributeName
-  null, // attributeNamespace
+  'xlink:href',
+  'http://www.w3.org/1999/xlink',
+  true, // sanitizeURL
 );
+
+['src', 'href', 'action', 'formAction'].forEach(attributeName => {
+  properties[attributeName] = new PropertyInfoRecord(
+    attributeName,
+    STRING,
+    false, // mustUseProperty
+    attributeName.toLowerCase(), // attributeName
+    null, // attributeNamespace
+    true, // sanitizeURL
+  );
+});

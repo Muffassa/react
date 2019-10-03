@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -554,39 +554,174 @@ describe('ReactDOMComponent', () => {
       expect(stubStyle.color).toEqual('green');
     });
 
-    it('should reject attribute key injection attack on markup', () => {
+    it('should reject attribute key injection attack on markup for regular DOM (SSR)', () => {
       expect(() => {
         for (let i = 0; i < 3; i++) {
-          const container = document.createElement('div');
-          const element = React.createElement(
+          const element1 = React.createElement(
+            'div',
+            {'blah" onclick="beevil" noise="hi': 'selected'},
+            null,
+          );
+          const element2 = React.createElement(
+            'div',
+            {'></div><script>alert("hi")</script>': 'selected'},
+            null,
+          );
+          let result1 = ReactDOMServer.renderToString(element1);
+          let result2 = ReactDOMServer.renderToString(element2);
+          expect(result1.toLowerCase()).not.toContain('onclick');
+          expect(result2.toLowerCase()).not.toContain('script');
+        }
+      }).toWarnDev([
+        'Warning: Invalid attribute name: `blah" onclick="beevil" noise="hi`',
+        'Warning: Invalid attribute name: `></div><script>alert("hi")</script>`',
+      ]);
+    });
+
+    it('should reject attribute key injection attack on markup for custom elements (SSR)', () => {
+      expect(() => {
+        for (let i = 0; i < 3; i++) {
+          const element1 = React.createElement(
             'x-foo-component',
             {'blah" onclick="beevil" noise="hi': 'selected'},
             null,
           );
-          ReactDOM.render(element, container);
+          const element2 = React.createElement(
+            'x-foo-component',
+            {'></x-foo-component><script>alert("hi")</script>': 'selected'},
+            null,
+          );
+          let result1 = ReactDOMServer.renderToString(element1);
+          let result2 = ReactDOMServer.renderToString(element2);
+          expect(result1.toLowerCase()).not.toContain('onclick');
+          expect(result2.toLowerCase()).not.toContain('script');
         }
-      }).toWarnDev(
+      }).toWarnDev([
         'Warning: Invalid attribute name: `blah" onclick="beevil" noise="hi`',
-      );
+        'Warning: Invalid attribute name: `></x-foo-component><script>alert("hi")</script>`',
+      ]);
     });
 
-    it('should reject attribute key injection attack on update', () => {
+    it('should reject attribute key injection attack on mount for regular DOM', () => {
+      expect(() => {
+        for (let i = 0; i < 3; i++) {
+          const container = document.createElement('div');
+          ReactDOM.render(
+            React.createElement(
+              'div',
+              {'blah" onclick="beevil" noise="hi': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
+          ReactDOM.unmountComponentAtNode(container);
+          ReactDOM.render(
+            React.createElement(
+              'div',
+              {'></div><script>alert("hi")</script>': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
+        }
+      }).toWarnDev([
+        'Warning: Invalid attribute name: `blah" onclick="beevil" noise="hi`',
+        'Warning: Invalid attribute name: `></div><script>alert("hi")</script>`',
+      ]);
+    });
+
+    it('should reject attribute key injection attack on mount for custom elements', () => {
+      expect(() => {
+        for (let i = 0; i < 3; i++) {
+          const container = document.createElement('div');
+          ReactDOM.render(
+            React.createElement(
+              'x-foo-component',
+              {'blah" onclick="beevil" noise="hi': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
+          ReactDOM.unmountComponentAtNode(container);
+          ReactDOM.render(
+            React.createElement(
+              'x-foo-component',
+              {'></x-foo-component><script>alert("hi")</script>': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
+        }
+      }).toWarnDev([
+        'Warning: Invalid attribute name: `blah" onclick="beevil" noise="hi`',
+        'Warning: Invalid attribute name: `></x-foo-component><script>alert("hi")</script>`',
+      ]);
+    });
+
+    it('should reject attribute key injection attack on update for regular DOM', () => {
+      expect(() => {
+        for (let i = 0; i < 3; i++) {
+          const container = document.createElement('div');
+          const beforeUpdate = React.createElement('div', {}, null);
+          ReactDOM.render(beforeUpdate, container);
+          ReactDOM.render(
+            React.createElement(
+              'div',
+              {'blah" onclick="beevil" noise="hi': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
+          ReactDOM.render(
+            React.createElement(
+              'div',
+              {'></div><script>alert("hi")</script>': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
+        }
+      }).toWarnDev([
+        'Warning: Invalid attribute name: `blah" onclick="beevil" noise="hi`',
+        'Warning: Invalid attribute name: `></div><script>alert("hi")</script>`',
+      ]);
+    });
+
+    it('should reject attribute key injection attack on update for custom elements', () => {
       expect(() => {
         for (let i = 0; i < 3; i++) {
           const container = document.createElement('div');
           const beforeUpdate = React.createElement('x-foo-component', {}, null);
           ReactDOM.render(beforeUpdate, container);
-
-          const afterUpdate = React.createElement(
-            'x-foo-component',
-            {'blah" onclick="beevil" noise="hi': 'selected'},
-            null,
+          ReactDOM.render(
+            React.createElement(
+              'x-foo-component',
+              {'blah" onclick="beevil" noise="hi': 'selected'},
+              null,
+            ),
+            container,
           );
-          ReactDOM.render(afterUpdate, container);
+          expect(container.firstChild.attributes.length).toBe(0);
+          ReactDOM.render(
+            React.createElement(
+              'x-foo-component',
+              {'></x-foo-component><script>alert("hi")</script>': 'selected'},
+              null,
+            ),
+            container,
+          );
+          expect(container.firstChild.attributes.length).toBe(0);
         }
-      }).toWarnDev(
+      }).toWarnDev([
         'Warning: Invalid attribute name: `blah" onclick="beevil" noise="hi`',
-      );
+        'Warning: Invalid attribute name: `></x-foo-component><script>alert("hi")</script>`',
+      ]);
     });
 
     it('should update arbitrary attributes for tags containing dashes', () => {
@@ -738,28 +873,28 @@ describe('ReactDOMComponent', () => {
       node.removeAttribute.mockImplementation(nodeRemoveAttribute);
 
       ReactDOM.render(<div id="" />, container);
-      expect(node.setAttribute.mock.calls.length).toBe(0);
-      expect(node.removeAttribute.mock.calls.length).toBe(0);
+      expect(node.setAttribute).toHaveBeenCalledTimes(0);
+      expect(node.removeAttribute).toHaveBeenCalledTimes(0);
 
       ReactDOM.render(<div id="foo" />, container);
-      expect(node.setAttribute.mock.calls.length).toBe(1);
-      expect(node.removeAttribute.mock.calls.length).toBe(0);
+      expect(node.setAttribute).toHaveBeenCalledTimes(1);
+      expect(node.removeAttribute).toHaveBeenCalledTimes(0);
 
       ReactDOM.render(<div id="foo" />, container);
-      expect(node.setAttribute.mock.calls.length).toBe(1);
-      expect(node.removeAttribute.mock.calls.length).toBe(0);
+      expect(node.setAttribute).toHaveBeenCalledTimes(1);
+      expect(node.removeAttribute).toHaveBeenCalledTimes(0);
 
       ReactDOM.render(<div />, container);
-      expect(node.setAttribute.mock.calls.length).toBe(1);
-      expect(node.removeAttribute.mock.calls.length).toBe(1);
+      expect(node.setAttribute).toHaveBeenCalledTimes(1);
+      expect(node.removeAttribute).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div id="" />, container);
-      expect(node.setAttribute.mock.calls.length).toBe(2);
-      expect(node.removeAttribute.mock.calls.length).toBe(1);
+      expect(node.setAttribute).toHaveBeenCalledTimes(2);
+      expect(node.removeAttribute).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div />, container);
-      expect(node.setAttribute.mock.calls.length).toBe(2);
-      expect(node.removeAttribute.mock.calls.length).toBe(2);
+      expect(node.setAttribute).toHaveBeenCalledTimes(2);
+      expect(node.removeAttribute).toHaveBeenCalledTimes(2);
     });
 
     it('should not incur unnecessary DOM mutations for string properties', () => {
@@ -768,7 +903,7 @@ describe('ReactDOMComponent', () => {
 
       const node = container.firstChild;
 
-      const nodeValueSetter = jest.genMockFn();
+      const nodeValueSetter = jest.fn();
 
       const oldSetAttribute = node.setAttribute.bind(node);
       node.setAttribute = function(key, value) {
@@ -777,22 +912,22 @@ describe('ReactDOMComponent', () => {
       };
 
       ReactDOM.render(<div value="foo" />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(1);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div value="foo" />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(1);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(1);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div value={null} />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(1);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div value="" />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(2);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(2);
 
       ReactDOM.render(<div />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(2);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(2);
     });
 
     it('should not incur unnecessary DOM mutations for boolean properties', () => {
@@ -812,16 +947,16 @@ describe('ReactDOMComponent', () => {
       });
 
       ReactDOM.render(<div checked={true} />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(0);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(0);
 
       ReactDOM.render(<div />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(1);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(1);
 
       ReactDOM.render(<div checked={false} />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(2);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(2);
 
       ReactDOM.render(<div checked={true} />, container);
-      expect(nodeValueSetter.mock.calls.length).toBe(3);
+      expect(nodeValueSetter).toHaveBeenCalledTimes(3);
     });
 
     it('should ignore attribute whitelist for elements with the "is" attribute', () => {
@@ -850,9 +985,9 @@ describe('ReactDOMComponent', () => {
       ReactDOM.render(<div dir={null} />, container);
       ReactDOM.render(<div dir={undefined} />, container);
       ReactDOM.render(<div />, container);
-      expect(setter.mock.calls.length).toBe(0);
+      expect(setter).toHaveBeenCalledTimes(0);
       ReactDOM.render(<div dir="ltr" />, container);
-      expect(setter.mock.calls.length).toBe(1);
+      expect(setter).toHaveBeenCalledTimes(1);
     });
 
     it('handles multiple child updates without interference', () => {
@@ -899,13 +1034,13 @@ describe('ReactDOMComponent', () => {
       return (str + '').replace(/([.?*+\^$\[\]\\(){}|-])/g, '\\$1');
     }
 
-    function toHaveAttribute(actual, expected) {
+    function expectToHaveAttribute(actual, expected) {
       const [attr, value] = expected;
       let re = '(?:^|\\s)' + attr + '=[\\\'"]';
       if (typeof value !== 'undefined') {
         re += quoteRegexp(value) + '[\\\'"]';
       }
-      return new RegExp(re).test(actual);
+      expect(actual).toMatch(new RegExp(re));
     }
 
     function genMarkup(props) {
@@ -913,19 +1048,17 @@ describe('ReactDOMComponent', () => {
     }
 
     it('should generate the correct markup with className', () => {
-      expect(toHaveAttribute(genMarkup({className: 'a'}), ['class', 'a']));
-      expect(toHaveAttribute(genMarkup({className: 'a b'}), ['class', 'a b']));
-      expect(toHaveAttribute(genMarkup({className: ''}), ['class', '']));
+      expectToHaveAttribute(genMarkup({className: 'a'}), ['class', 'a']);
+      expectToHaveAttribute(genMarkup({className: 'a b'}), ['class', 'a b']);
+      expectToHaveAttribute(genMarkup({className: ''}), ['class', '']);
     });
 
     it('should escape style names and values', () => {
-      expect(
-        toHaveAttribute(
-          genMarkup({
-            style: {'b&ckground': '<3'},
-          }),
-          ['style', 'b&amp;ckground:&lt;3;'],
-        ),
+      expectToHaveAttribute(
+        genMarkup({
+          style: {'b&ckground': '<3'},
+        }),
+        ['style', 'b&amp;ckground:&lt;3'],
       );
     });
   });
@@ -940,7 +1073,7 @@ describe('ReactDOMComponent', () => {
     }
 
     function toHaveInnerhtml(actual, expected) {
-      const re = '^' + quoteRegexp(expected) + '$';
+      const re = quoteRegexp(expected);
       return new RegExp(re).test(actual);
     }
 
@@ -951,7 +1084,7 @@ describe('ReactDOMComponent', () => {
           genMarkup({dangerouslySetInnerHTML: innerHTML}),
           'testContent',
         ),
-      );
+      ).toBe(true);
     });
   });
 
@@ -984,7 +1117,7 @@ describe('ReactDOMComponent', () => {
       container.getElementsByTagName('source')[0].dispatchEvent(errorEvent);
 
       if (__DEV__) {
-        expect(console.log.calls.count()).toBe(1);
+        expect(console.log).toHaveBeenCalledTimes(1);
         expect(console.log.calls.argsFor(0)[0]).toContain('onError called');
       }
     });
@@ -1000,7 +1133,11 @@ describe('ReactDOMComponent', () => {
 
       expect(() => {
         returnedValue = ReactDOMServer.renderToString(<Container />);
-      }).toWarnDev('<BR /> is using uppercase HTML.');
+      }).toWarnDev(
+        '<BR /> is using incorrect casing. ' +
+          'Use PascalCase for React components, ' +
+          'or lowercase for HTML elements.',
+      );
       expect(returnedValue).not.toContain('</BR>');
     });
 
@@ -1012,7 +1149,11 @@ describe('ReactDOMComponent', () => {
 
       expect(() =>
         ReactTestUtils.renderIntoDocument(React.createElement('IMG')),
-      ).toWarnDev('<IMG /> is using uppercase HTML.');
+      ).toWarnDev(
+        '<IMG /> is using incorrect casing. ' +
+          'Use PascalCase for React components, ' +
+          'or lowercase for HTML elements.',
+      );
     });
 
     it('should warn on props reserved for future use', () => {
@@ -1059,7 +1200,9 @@ describe('ReactDOMComponent', () => {
         expect(() =>
           ReactTestUtils.renderIntoDocument(<hasOwnProperty />),
         ).toWarnDev([
-          '<hasOwnProperty /> is using uppercase HTML',
+          '<hasOwnProperty /> is using incorrect casing. ' +
+            'Use PascalCase for React components, ' +
+            'or lowercase for HTML elements.',
           'The tag <hasOwnProperty> is unrecognized in this browser',
         ]);
       } finally {
@@ -1305,7 +1448,7 @@ describe('ReactDOMComponent', () => {
       container.getElementsByTagName('image')[0].dispatchEvent(loadEvent);
 
       if (__DEV__) {
-        expect(console.log.calls.count()).toBe(2);
+        expect(console.log).toHaveBeenCalledTimes(2);
         expect(console.log.calls.argsFor(0)[0]).toContain('onError called');
         expect(console.log.calls.argsFor(1)[0]).toContain('onLoad called');
       }
@@ -1570,7 +1713,7 @@ describe('ReactDOMComponent', () => {
 
       expect(() => ReactTestUtils.renderIntoDocument(<Foo />)).toWarnDev([
         'Warning: validateDOMNesting(...): <tr> cannot appear as a child of ' +
-          '<table>. Add a <tbody> to your code to match the DOM tree generated ' +
+          '<table>. Add a <tbody>, <thead> or <tfoot> to your code to match the DOM tree generated ' +
           'by the browser.' +
           '\n    in tr (at **)' +
           '\n    in Row (at **)' +
@@ -2361,6 +2504,34 @@ describe('ReactDOMComponent', () => {
     });
   });
 
+  describe('Boolean attributes', function() {
+    it('warns on the ambiguous string value "false"', function() {
+      let el;
+      expect(() => {
+        el = ReactTestUtils.renderIntoDocument(<div hidden="false" />);
+      }).toWarnDev(
+        'Received the string `false` for the boolean attribute `hidden`. ' +
+          'The browser will interpret it as a truthy value. ' +
+          'Did you mean hidden={false}?',
+      );
+
+      expect(el.getAttribute('hidden')).toBe('');
+    });
+
+    it('warns on the potentially-ambiguous string value "true"', function() {
+      let el;
+      expect(() => {
+        el = ReactTestUtils.renderIntoDocument(<div hidden="true" />);
+      }).toWarnDev(
+        'Received the string `true` for the boolean attribute `hidden`. ' +
+          'Although this works, it will not work as expected if you pass the string "false". ' +
+          'Did you mean hidden={true}?',
+      );
+
+      expect(el.getAttribute('hidden')).toBe('');
+    });
+  });
+
   describe('Hyphenated SVG elements', function() {
     it('the font-face element is not a custom element', function() {
       let el;
@@ -2428,6 +2599,102 @@ describe('ReactDOMComponent', () => {
       expect(node.hasAttribute('onx')).toBe(false);
       ReactDOM.render(<some-custom-element onx="bar" />, container);
       expect(node.getAttribute('onx')).toBe('bar');
+    });
+  });
+
+  it('receives events in specific order', () => {
+    let eventOrder = [];
+    let track = tag => () => eventOrder.push(tag);
+    let outerRef = React.createRef();
+    let innerRef = React.createRef();
+
+    function OuterReactApp() {
+      return (
+        <div
+          ref={outerRef}
+          onClick={track('outer bubble')}
+          onClickCapture={track('outer capture')}
+        />
+      );
+    }
+
+    function InnerReactApp() {
+      return (
+        <div
+          ref={innerRef}
+          onClick={track('inner bubble')}
+          onClickCapture={track('inner capture')}
+        />
+      );
+    }
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    try {
+      ReactDOM.render(<OuterReactApp />, container);
+      ReactDOM.render(<InnerReactApp />, outerRef.current);
+
+      document.addEventListener('click', track('document bubble'));
+      document.addEventListener('click', track('document capture'), true);
+
+      innerRef.current.click();
+
+      // The order we receive here is not ideal since it is expected that the
+      // capture listener fire before all bubble listeners. Other React apps
+      // might depend on this.
+      //
+      // @see https://github.com/facebook/react/pull/12919#issuecomment-395224674
+      expect(eventOrder).toEqual([
+        'document capture',
+        'inner capture',
+        'inner bubble',
+        'outer capture',
+        'outer bubble',
+        'document bubble',
+      ]);
+    } finally {
+      document.body.removeChild(container);
+    }
+  });
+
+  describe('iOS Tap Highlight', () => {
+    it('adds onclick handler to elements with onClick prop', () => {
+      const container = document.createElement('div');
+
+      const elementRef = React.createRef();
+      function Component() {
+        return <div ref={elementRef} onClick={() => {}} />;
+      }
+
+      ReactDOM.render(<Component />, container);
+      expect(typeof elementRef.current.onclick).toBe('function');
+    });
+
+    it('adds onclick handler to a portal root', () => {
+      const container = document.createElement('div');
+      const portalContainer = document.createElement('div');
+
+      function Component() {
+        return ReactDOM.createPortal(
+          <div onClick={() => {}} />,
+          portalContainer,
+        );
+      }
+
+      ReactDOM.render(<Component />, container);
+      expect(typeof portalContainer.onclick).toBe('function');
+    });
+
+    it('does not add onclick handler to the React root', () => {
+      const container = document.createElement('div');
+
+      function Component() {
+        return <div onClick={() => {}} />;
+      }
+
+      ReactDOM.render(<Component />, container);
+      expect(typeof container.onclick).not.toBe('function');
     });
   });
 });

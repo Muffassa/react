@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -14,13 +14,12 @@ let PropTypes;
 let RCTEventEmitter;
 let React;
 let ReactNative;
-let ReactNativeBridgeEventPlugin;
 let ResponderEventPlugin;
 let UIManager;
 let createReactNativeComponentClass;
 
 // Parallels requireNativeComponent() in that it lazily constructs a view config,
-// And registers view manager event types with ReactNativeBridgeEventPlugin.
+// And registers view manager event types with ReactNativeViewConfigRegistry.
 const fakeRequireNativeComponent = (uiViewClassName, validAttributes) => {
   const getViewConfig = () => {
     const viewConfig = {
@@ -55,8 +54,6 @@ const fakeRequireNativeComponent = (uiViewClassName, validAttributes) => {
       directEventTypes: {},
     };
 
-    ReactNativeBridgeEventPlugin.processEventTypes(viewConfig);
-
     return viewConfig;
   };
 
@@ -67,26 +64,69 @@ beforeEach(() => {
   jest.resetModules();
 
   PropTypes = require('prop-types');
-  RCTEventEmitter = require('RCTEventEmitter');
+  RCTEventEmitter = require('react-native/Libraries/ReactPrivate/ReactNativePrivateInterface')
+    .RCTEventEmitter;
   React = require('react');
   ReactNative = require('react-native-renderer');
-  ReactNativeBridgeEventPlugin = require('../ReactNativeBridgeEventPlugin')
-    .default;
-  ResponderEventPlugin = require('events/ResponderEventPlugin').default;
-  UIManager = require('UIManager');
-  createReactNativeComponentClass = require('../createReactNativeComponentClass')
-    .default;
+  ResponderEventPlugin = require('legacy-events/ResponderEventPlugin').default;
+  UIManager = require('react-native/Libraries/ReactPrivate/ReactNativePrivateInterface')
+    .UIManager;
+  createReactNativeComponentClass = require('react-native/Libraries/ReactPrivate/ReactNativePrivateInterface')
+    .ReactNativeViewConfigRegistry.register;
+});
+
+it('fails to register the same event name with different types', () => {
+  const InvalidEvents = createReactNativeComponentClass('InvalidEvents', () => {
+    if (!__DEV__) {
+      // Simulate a registration error in prod.
+      throw new Error('Event cannot be both direct and bubbling: topChange');
+    }
+
+    // This view config has the same bubbling and direct event name
+    // which will fail to register in developement.
+    return {
+      uiViewClassName: 'InvalidEvents',
+      validAttributes: {
+        onChange: true,
+      },
+      bubblingEventTypes: {
+        topChange: {
+          phasedRegistrationNames: {
+            bubbled: 'onChange',
+            captured: 'onChangeCapture',
+          },
+        },
+      },
+      directEventTypes: {
+        topChange: {
+          registrationName: 'onChange',
+        },
+      },
+    };
+  });
+
+  // The first time this renders,
+  // we attempt to register the view config and fail.
+  expect(() => ReactNative.render(<InvalidEvents />, 1)).toThrow(
+    'Event cannot be both direct and bubbling: topChange',
+  );
+
+  // Continue to re-register the config and
+  // fail so that we don't mask the above failure.
+  expect(() => ReactNative.render(<InvalidEvents />, 1)).toThrow(
+    'Event cannot be both direct and bubbling: topChange',
+  );
 });
 
 it('fails if unknown/unsupported event types are dispatched', () => {
-  expect(RCTEventEmitter.register.mock.calls.length).toBe(1);
+  expect(RCTEventEmitter.register).toHaveBeenCalledTimes(1);
   const EventEmitter = RCTEventEmitter.register.mock.calls[0][0];
   const View = fakeRequireNativeComponent('View', {});
 
   ReactNative.render(<View onUnspecifiedEvent={() => {}} />, 1);
 
   expect(UIManager.__dumpHierarchyForJestTestsOnly()).toMatchSnapshot();
-  expect(UIManager.createView.mock.calls.length).toBe(1);
+  expect(UIManager.createView).toHaveBeenCalledTimes(1);
 
   const target = UIManager.createView.mock.calls[0][0];
 
@@ -100,7 +140,7 @@ it('fails if unknown/unsupported event types are dispatched', () => {
 });
 
 it('handles events', () => {
-  expect(RCTEventEmitter.register.mock.calls.length).toBe(1);
+  expect(RCTEventEmitter.register).toHaveBeenCalledTimes(1);
   const EventEmitter = RCTEventEmitter.register.mock.calls[0][0];
   const View = fakeRequireNativeComponent('View', {foo: true});
 
@@ -124,7 +164,7 @@ it('handles events', () => {
   );
 
   expect(UIManager.__dumpHierarchyForJestTestsOnly()).toMatchSnapshot();
-  expect(UIManager.createView.mock.calls.length).toBe(2);
+  expect(UIManager.createView).toHaveBeenCalledTimes(2);
 
   // Don't depend on the order of createView() calls.
   // Stack creates views outside-in; fiber creates them inside-out.
@@ -156,9 +196,9 @@ it('handles events', () => {
 });
 
 it('handles events on text nodes', () => {
-  expect(RCTEventEmitter.register.mock.calls.length).toBe(1);
+  expect(RCTEventEmitter.register).toHaveBeenCalledTimes(1);
   const EventEmitter = RCTEventEmitter.register.mock.calls[0][0];
-  const Text = fakeRequireNativeComponent('Text', {});
+  const Text = fakeRequireNativeComponent('RCTText', {});
 
   class ContextHack extends React.Component {
     static childContextTypes = {isInAParentText: PropTypes.bool};
@@ -193,7 +233,7 @@ it('handles events on text nodes', () => {
     1,
   );
 
-  expect(UIManager.createView.mock.calls.length).toBe(5);
+  expect(UIManager.createView).toHaveBeenCalledTimes(5);
 
   // Don't depend on the order of createView() calls.
   // Stack creates views outside-in; fiber creates them inside-out.

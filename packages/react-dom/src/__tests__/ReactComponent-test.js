@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013-present, Facebook, Inc.
+ * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * This source code is licensed under the MIT license found in the
  * LICENSE file in the root directory of this source tree.
@@ -162,7 +162,7 @@ describe('ReactComponent', () => {
     ReactTestUtils.renderIntoDocument(<Parent child={<span />} />);
   });
 
-  it('should support new-style refs', () => {
+  it('should support callback-style refs', () => {
     const innerObj = {};
     const outerObj = {};
 
@@ -194,6 +194,49 @@ describe('ReactComponent', () => {
       componentDidMount() {
         expect(this.innerRef.getObject()).toEqual(innerObj);
         expect(this.outerRef.getObject()).toEqual(outerObj);
+        mounted = true;
+      }
+    }
+
+    ReactTestUtils.renderIntoDocument(<Component />);
+    expect(mounted).toBe(true);
+  });
+
+  it('should support object-style refs', () => {
+    const innerObj = {};
+    const outerObj = {};
+
+    class Wrapper extends React.Component {
+      getObject = () => {
+        return this.props.object;
+      };
+
+      render() {
+        return <div>{this.props.children}</div>;
+      }
+    }
+
+    let mounted = false;
+
+    class Component extends React.Component {
+      constructor() {
+        super();
+        this.innerRef = React.createRef();
+        this.outerRef = React.createRef();
+      }
+      render() {
+        const inner = <Wrapper object={innerObj} ref={this.innerRef} />;
+        const outer = (
+          <Wrapper object={outerObj} ref={this.outerRef}>
+            {inner}
+          </Wrapper>
+        );
+        return outer;
+      }
+
+      componentDidMount() {
+        expect(this.innerRef.current.getObject()).toEqual(innerObj);
+        expect(this.outerRef.current.getObject()).toEqual(outerObj);
         mounted = true;
       }
     }
@@ -235,7 +278,7 @@ describe('ReactComponent', () => {
       componentDidMount() {
         // Check .props.title to make sure we got the right elements back
         expect(this.wrapperRef.getTitle()).toBe('wrapper');
-        expect(ReactDOM.findDOMNode(this.innerRef).className).toBe('inner');
+        expect(this.innerRef.className).toBe('inner');
         mounted = true;
       }
     }
@@ -344,11 +387,11 @@ describe('ReactComponent', () => {
     const callback = jest.fn();
     const container = document.createElement('div');
     ReactDOM.render(<div />, container, callback);
-    expect(callback.mock.calls.length).toBe(1);
+    expect(callback).toHaveBeenCalledTimes(1);
     ReactDOM.render(<div className="foo" />, container, callback);
-    expect(callback.mock.calls.length).toBe(2);
+    expect(callback).toHaveBeenCalledTimes(2);
     ReactDOM.render(<span />, container, callback);
-    expect(callback.mock.calls.length).toBe(3);
+    expect(callback).toHaveBeenCalledTimes(3);
   });
 
   it('throws usefully when rendering badly-typed elements', () => {
